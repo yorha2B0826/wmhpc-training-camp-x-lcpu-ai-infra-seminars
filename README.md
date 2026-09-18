@@ -41,6 +41,8 @@
 | `tilelang_scale_add.py` | 二维 CTA grid（`T.ceildiv`）+ `T.Parallel` |
 | `tilelang_copy2d.py` | `T.copy` 经 shared memory 往返 |
 | `tilelang_matmul.py` | shared tile + `alloc_fragment` 累加器 + `T.Pipelined` + `T.gemm` |
+| `softmax.py` | 问题 7.8（选做）：Triton 行 softmax，一个 program 一行，`tl.max`/`tl.sum` 归约，越界 lane 以 `-inf` 填充 |
+| `tilelang_softmax.py` | 问题 7.7：TileLang 行 softmax，一个 block 一行，`T.reduce_max`/`T.reduce_sum` + `T.Parallel`/`T.exp`，宽度取 `next_power_of_2(N)` 并以 `-T.infinity` 补位；wrapper 按 `(M, N)` 缓存编译结果 |
 
 ### 其他改动
 
@@ -49,7 +51,6 @@
 
 ### 尚未实现
 
-- `assignment01/kernels/softmax.py`、`assignment01/kernels/tilelang_softmax.py`（仍为 `NotImplementedError`）。
 - `assignment02` 的练习（`kernels/block_scale_sim.py`、`kernels/quant_outlier.py` 等）。
 
 除上表列出的文件外，其余文件与上游 `main` 完全一致；上游自带的题面、handout、脚手架与判测代码均未改动。
@@ -81,8 +82,28 @@ Python（`cd assignment01`）：
 
 ```bash
 uv sync --extra tilelang && uv run pytest tests/
-# 16 passed, 8 failed —— 8 个 failure 全部来自尚未实现的 softmax / tilelang_softmax
+# 24 passed, 11 warnings —— 全部通过。
+# 11 个 warning 均为 tilelang 0.1.12 对题面脚手架里 T.Buffer 的 DeprecationWarning，
+# 不是实现问题（详见下）。
 ```
+
+分文件结果：
+
+```
+tests/test_fused_op.py            3 passed
+tests/test_matmul_triton.py       2 passed
+tests/test_simt_sim.py            5 passed
+tests/test_softmax.py             4 passed
+tests/test_tilelang.py            3 passed
+tests/test_tilelang_softmax.py    4 passed
+tests/test_vector_add.py          3 passed
+```
+
+`test_softmax.py` / `test_tilelang_softmax.py` 另以 `(M, N) ∈ {(1,1), (5,1), (33,127), (8,1000), (4,256), (7,4096)}` 做了额外对拍（含 `N=4096` 上界与 `N=1` 退化行），两者均与 `torch.softmax` 一致；`randn * 1000` 的数值稳定性用例也通过。
+
+### 关于 tilelang 的 DeprecationWarning
+
+`tests/test_tilelang.py` 运行时的 11 条 `T.Buffer(...) is deprecated, use T.Tensor(...) instead` 全部来自**题面脚手架**（`kernels/tilelang_scale_add.py`、`tilelang_copy2d.py`、`tilelang_matmul.py` 里的 `X: T.Buffer(...)` 等注解，每处每次调用触发一条），逐字是上游原文，未作改动。自行新写的 `kernels/tilelang_softmax.py` 已直接使用 `T.Tensor`，不产生该警告。这些警告不影响判测（判测只比数值），保留上游写法以保证与题面一致。
 
 ## 同步上游
 
