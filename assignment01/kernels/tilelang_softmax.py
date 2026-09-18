@@ -22,7 +22,55 @@ Tip: elementwise + 行内归约的 kernel 大概率是带宽瓶颈，可以想�
 import torch
 import tilelang
 import tilelang.language as T
+_kernel_cache = {}
 
+def next_power_of_2(n: int) ->int:
+    return 1 << (n - 1).bit_length()
+
+def make_softmax(M, N):
+    BLOCK_N = next_power_of_2(N)
+    @T.prim_func
+    def softmax_kernel(
+        X: T.Tensor((M, N), "float32"),
+        Y: T.Tensor((M, N), "float32"),
+    ):
+        with T.Kernel(M, threads=128) as row:
+            x_local = T.alloc_fragment((BLOCK_N,), "float32")
+            row_max = T.alloc_fragment((1,), "float32")
+            row_sum = T.alloc_fragment((1,), "float32")
+
+            for i in T.Parallel(BLOCK_N):
+                x_local[i] = T.if_then_else(
+                    i < N,
+                    X[row, i],
+                    -T.infinity("float32")
+                )
+
+            T.reduce_max(x_local, row_max, dim=0)
+            for i in T.Parallel(BLOCK_N):
+                x_local[i] = T.exp(x_local[i] - row_max[0])
+
+            T.reduce_sum(x_local, row_sum, dim=0)
+
+            for i in T.Parallel(BLOCK_N):
+                if i < N:
+                    Y[row, i] = x_local[i] / row_sum[0]
+
+    return softmax_kernel
 
 def softmax(x: torch.Tensor) -> torch.Tensor:
-    raise NotImplementedError("从这里开始写")
+    assert x.is_cuda
+    assert x.dtype == torch.float32
+    assert x.ndim == 2
+
+    M, N = x.shape
+    assert N <= 4096
+    key = (M, N)
+    if key not in _kernel_cache:
+        _kernel_cache[key] = tilelang.compile(
+            make_softmax(M, N),
+            out_idx = [1],
+        )
+
+    return _kernel_cache[key](x)
+

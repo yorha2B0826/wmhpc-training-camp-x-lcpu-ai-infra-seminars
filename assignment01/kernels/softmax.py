@@ -17,6 +17,34 @@ import torch
 import triton
 import triton.language as tl
 
+@triton.jit
+def softmax_kernel(X, Y, N:tl.constexpr, block_N:tl.constexpr):
+    row = tl.program_id(0) 
+    offsets = tl.arange(0, block_N)
+    mask = offsets < N
+    x = tl.load(X + row * N + offsets, mask, -float("inf"))
+    row_max = tl.max(x, 0)
+    z = x - row_max
+    z = tl.exp(z)
+    sum = tl.sum(z, 0)
+    y = z / sum
+    tl.store(Y + row * N + offsets, y, mask)
+
 
 def softmax(x: torch.Tensor) -> torch.Tensor:
-    raise NotImplementedError("从这里开始写")
+    assert x.is_cuda
+    assert x.ndim == 2
+    assert x.dtype == torch.float32
+
+    M, N = x.shape
+
+    y = torch.empty_like(x)
+
+    block_N = triton.next_power_of_2(N)
+
+    softmax_kernel[(M,)](
+        x, y, N, block_N
+    )
+    return y
+
+
