@@ -40,10 +40,62 @@
 
 __global__ void reduce_interleaved(const float *in, float *out) {
     // TODO：从这里开始写（交错配对版本）
+    __shared__ float sdata[BLOCK];
+    sdata[threadIdx.x] = in[blockIdx.x * blockDim.x + threadIdx.x];
+    __syncthreads();
+    for (unsigned int s = 1; s < blockDim.x; s <<= 1) {
+        if (threadIdx.x % (s << 1) == 0) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        out[blockIdx.x] = sdata[0];
+    }
 }
 
 __global__ void reduce_contiguous(const float *in, float *out) {
     // TODO：从这里开始写（连续配对版本）
+    __shared__ float sdata[BLOCK];
+    sdata[threadIdx.x] = in[blockIdx.x * blockDim.x + threadIdx.x];
+    __syncthreads();
+    for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        out[blockIdx.x] = sdata[0];
+    }
+}
+
+__global__ void reduce_shfl_down_sync(const float *in, float *out) {
+    __shared__ float sdata[BLOCK];
+    sdata[threadIdx.x] = in[blockIdx.x * blockDim.x + threadIdx.x];
+    __syncthreads();
+    for (unsigned int s = blockDim.x / 2; s > 32; s >>= 1) {
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
+
+    // 最后 warp 内的归约用 shuffle 指令
+    if (threadIdx.x < 32) {
+        float val = sdata[threadIdx.x] + sdata[threadIdx.x + 32];
+        val += __shfl_down_sync(0xffffffff, val, 16);
+        val += __shfl_down_sync(0xffffffff, val, 8);
+        val += __shfl_down_sync(0xffffffff, val, 4);
+        val += __shfl_down_sync(0xffffffff, val, 2);
+        val += __shfl_down_sync(0xffffffff, val, 1);
+
+        if (threadIdx.x == 0) {
+            out[blockIdx.x] = val;
+        }
+    }
 }
 
 // ---------------- 以下是判测与计时，不要修改 ----------------
@@ -97,6 +149,8 @@ int main() {
     float ms_i = run_one(reduce_interleaved, "interleaved", d_in, d_out, h_out,
                          h_partial, nblocks);
     float ms_c = run_one(reduce_contiguous, "contiguous ", d_in, d_out, h_out,
+                         h_partial, nblocks);
+    float ms_s = run_one(reduce_shfl_down_sync, "shuffle    ", d_in, d_out, h_out,
                          h_partial, nblocks);
     // 阈值 1.5x：A100 实测 2.22x、V100 实测 2.33x，两版写成一样时是 ~1x。
     float ratio = report_speedup("interleaved / contiguous", ms_i, ms_c, 1.5f,
