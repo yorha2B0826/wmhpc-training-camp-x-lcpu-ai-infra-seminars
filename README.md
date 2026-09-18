@@ -48,12 +48,13 @@
 
 - `assignment01/uv.lock`、`assignment02/uv.lock`：`uv sync` 生成的锁文件，一并提交以便复现环境。
 - `assignment02/pyproject.toml`：仅删除文件末尾多余空行。
+- `assignment01/handout/aiinfra_seminars_answer.zip`：**新增文件**，内容为一份覆盖 assignment01 全部题目的参考答案 LaTeX 源码（`main.tex` + `latexmkrc`，编译后 22 页）。来源未经核实，仅作个人参考留存。
 
 ### 尚未实现
 
 - `assignment02` 的练习（`kernels/block_scale_sim.py`、`kernels/quant_outlier.py` 等）。
 
-除上表列出的文件外，其余文件与上游 `main` 完全一致；上游自带的题面、handout、脚手架与判测代码均未改动。
+除上表列出的文件外，其余文件与上游 `main` 完全一致；上游自带的题面、handout、脚手架与判测代码均未改动（仅新增上述参考答案压缩包，未修改 `assignment01.tex`）。
 
 ## 验证记录
 
