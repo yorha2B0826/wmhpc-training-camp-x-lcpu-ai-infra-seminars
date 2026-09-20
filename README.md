@@ -5,7 +5,7 @@
 - 上游：<https://github.com/lcpu-club/wmhpc-training-camp-x-lcpu-ai-infra-seminars>
 - 本 fork：<https://github.com/yorha2B0826/wmhpc-training-camp-x-lcpu-ai-infra-seminars>
 
-仓库中的**练习解答**为本人独立完成，只提交到本 fork（`origin`），**不会合入上游**。`upstream` 仅用于 `git fetch` 同步新发放的作业。
+仓库中的**练习解答**为本人完成，只提交到本 fork（`origin`），**不会合入上游**。`upstream` 仅用于 `git fetch` 同步新发放的作业。
 
 > **交流与纠错**：解答若有错误，或你有不同思路，欢迎邮件联系 **<mjzheng26@mail.ustc.edu.cn>**。
 
